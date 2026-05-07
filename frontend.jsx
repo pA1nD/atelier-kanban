@@ -6,8 +6,9 @@
  *   • rowed  — one horizontal band per space, each with its own 5-column
  *              slice, rules between bands.
  *
- * Data comes from kanban/backend.js via HTTP + SSE. Writes go through the
- * same API (see .claude/skills/atelier-kanban/SKILL.md).
+ * Data comes from kanban/backend.js via HTTP. Live updates ride the shell's
+ * shared WebSocket (topic `kanban`). Writes go through the same API
+ * (see .claude/skills/atelier-kanban/SKILL.md).
  */
 
 const { useState, useEffect, useRef } = React;
@@ -443,7 +444,7 @@ export default function Module() {
   // Drag a card to a new column (and, in rowed mode, possibly a new space).
   // Optimistic local patch + POST through the same markdown route agents use.
   // On failure we revert — fetch only rejects on network errors, so check
-  // r.ok too. SSE will reconcile any drift on the next mutation either way.
+  // r.ok too. The shell-WS broadcast reconciles any drift on the next mutation either way.
   const moveCard = (id, { col, space }) => {
     const card = cards.find((c) => c.id === id);
     if (!card) return;
@@ -494,29 +495,25 @@ export default function Module() {
       .catch((err) => console.error('[kanban] cards fetch failed:', err));
   }, [spaces]);
 
-  // Live updates. One connection for the lifetime of the module; refetch
-  // only the changed space and patch into the merged list.
+  // Live updates. The shell multiplexes a single WebSocket per tab; we
+  // subscribe to the 'kanban' topic and refetch the changed space.
   useEffect(() => {
-    const es = new EventSource('/api/kanban/events');
-    es.onmessage = (e) => {
-      let evt;
-      try { evt = JSON.parse(e.data); } catch { return; }
-      if (evt.type === 'spaces-changed') {
+    if (!window.__atelier?.subscribe) return;
+    return window.__atelier.subscribe('kanban', (frame) => {
+      if (frame.type === 'spaces-changed') {
         fetch('/api/kanban/spaces', { headers: { Accept: 'application/json' }})
           .then((r) => r.json())
           .then(({ spaces }) => setSpaces(spaces))
           .catch(() => {});
-      } else if (evt.type === 'cards-changed') {
-        fetchCards(evt.space)
+      } else if (frame.type === 'cards-changed') {
+        fetchCards(frame.space)
           .then((updated) => setCards((prev) => [
-            ...prev.filter((c) => c.space !== evt.space),
+            ...prev.filter((c) => c.space !== frame.space),
             ...updated,
           ]))
           .catch(() => {});
       }
-    };
-    es.onerror = (e) => console.warn('[kanban] SSE error', e);
-    return () => es.close();
+    });
   }, []);
 
   // Column totals — shown in the global column header row.

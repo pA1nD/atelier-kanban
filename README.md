@@ -25,8 +25,9 @@ GET  /api/kanban/spaces                         list spaces + card counts
 POST /api/kanban/spaces                         create / update space(s)
 GET  /api/kanban/spaces/<name>/cards            read all cards in a space
 POST /api/kanban/spaces/<name>/cards            create / update card(s) in a space
-GET  /api/kanban/events                         SSE stream of mutation events
 ```
+
+The dashboard subscribes to live mutation events on the shell's shared WebSocket (topic `kanban`); module code that wants to react to changes uses `window.__atelier.subscribe('kanban', frame => …)` rather than holding its own connection.
 
 A card is YAML frontmatter + a markdown body, separated from the next card by a bare `---`:
 

@@ -321,23 +321,6 @@ function sendText(res, body, status = 200) {
 }
 
 /* ========================================================================
- * SSE push — live UI updates when agents (or the UI itself) mutate state.
- *
- * Clients subscribe with `new EventSource('/api/kanban/events')`. Every
- * mutating route calls notify() at the end with a small JSON payload so
- * listeners can decide whether to refetch.
- * ====================================================================== */
-
-const subscribers = new Set();
-
-function notify(event) {
-  const line = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of subscribers) {
-    try { res.write(line); } catch { subscribers.delete(res); }
-  }
-}
-
-/* ========================================================================
  * Upsert logic
  * ====================================================================== */
 
@@ -432,19 +415,6 @@ export default {
   mountRoutes(router, ctx) {
     ctx.log(`kanban · ${spaces.size} spaces, ${cards.size} cards (${fs.existsSync(BOARD_PATH) ? 'loaded from disk' : 'empty — no board.md yet'})`);
 
-    // GET /api/kanban/events — SSE stream of mutation events.
-    router.get('/api/kanban/events', (req, res) => {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-      res.write('retry: 500\n\n');
-      subscribers.add(res);
-      req.on('close', () => subscribers.delete(res));
-    });
-
     // GET /api/kanban/spaces
     router.get('/api/kanban/spaces', (req, res) => {
       const names = [...spaces.keys()].sort();
@@ -480,7 +450,7 @@ export default {
         (existed ? updated : created).push(name);
       }
       persistToDisk();
-      notify({ type: 'spaces-changed' });
+      ctx.broadcast({ type: 'spaces-changed' });
       if (wantsJson(req)) return sendJson(res, { created, updated });
       sendText(res, [
         ...created.map((n) => `created: ${n}`),
@@ -524,7 +494,8 @@ export default {
       }
       if (errors.length) return sendText(res, errors.join('\n') + '\n', 400);
 
-      // Phase 2 — apply, and track relocations for SSE.
+      // Phase 2 — apply, and track relocations so we can broadcast both
+      // source and destination.
       const plans = docs.map((d) => {
         const id = typeof d.frontmatter.id === 'string' && d.frontmatter.id ? d.frontmatter.id : null;
         const existed = id ? cards.has(id) : false;
@@ -542,7 +513,7 @@ export default {
       const touched = new Set([name]);
       for (const p of plans) if (p.prevSpace) touched.add(p.prevSpace);
       persistToDisk();
-      for (const sp of touched) notify({ type: 'cards-changed', space: sp });
+      for (const sp of touched) ctx.broadcast({ type: 'cards-changed', space: sp });
       if (wantsJson(req)) return sendJson(res, { created, updated });
       sendText(res, [
         ...created.map((id) => `created: ${id}`),

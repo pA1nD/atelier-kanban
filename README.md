@@ -14,7 +14,7 @@ So this board is dual-surface by design. Humans get a familiar 5-column board wi
 
 The board is partitioned into **spaces** — scoped sub-boards like `apprentice`, `design-system`, `ingest`. Every card belongs to exactly one space. There's no global card-list endpoint by design: it keeps any single agent (or human) from pulling the whole board into context.
 
-The header has a layout toggle: **flat** stacks every space's cards in one set of 5 columns; **rowed** gives each space its own band. Click a card for the detail drawer; click a tag to filter across spaces.
+The header has a layout toggle: **flat** stacks every space's cards in one set of 5 columns; **rowed** gives each space its own band. Click a card for the detail drawer; click a tag to filter across spaces. Drag a card to another column to move it — in rowed mode, dragging across rows reassigns the card's space.
 
 ## API
 

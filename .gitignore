@@ -1,0 +1,17 @@
+.DS_Store
+*.log
+.env
+
+# Atelier runtime state — written via ctx.dataDir, never shipped.
+data/
+
+# Claude Code runtime dirs (skills/agents/commands/CLAUDE.md DO ship; runtime state does not).
+.claude/agent-memory/
+.claude/projects/
+.claude/todos/
+.claude/plans/
+.claude/shell-snapshots/
+.claude/settings.local.json
+
+# Module deps (only present if the module declares its own package.json).
+node_modules/

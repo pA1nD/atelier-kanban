@@ -5,13 +5,16 @@
 # Atelier runtime state — written via ctx.dataDir, never shipped.
 data/
 
-# Claude Code runtime dirs (skills/agents/commands/CLAUDE.md DO ship; runtime state does not).
-.claude/agent-memory/
-.claude/projects/
-.claude/todos/
-.claude/plans/
-.claude/shell-snapshots/
-.claude/settings.local.json
-
 # Module deps (only present if the module declares its own package.json).
 node_modules/
+
+# Claude Code: ignore everything in .claude/ by default (runtime state),
+# whitelist only the definitional dirs we actively use. Mirrors Atelier's
+# deploy filter (see atelier/atelier.js DEPLOY_FILTERS).
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/commands/
+!.claude/hooks/
+!.claude/CLAUDE.md
+!.claude/settings.json

@@ -204,6 +204,11 @@ function Card({ card, activeTag, onTag, onOpen, dim, selected, showSpace = true 
   return (
     <div
       data-kanban-card
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.id);
+      }}
       onClick={() => onOpen(card)}
       className={[
         'bg-card border rounded-sm pt-[9px] px-2.5 pb-2 mb-1.5',
@@ -272,26 +277,55 @@ function Card({ card, activeTag, onTag, onOpen, dim, selected, showSpace = true 
  * CELL — a card list for one column × (optionally) one space.
  * ========================================================================== */
 
-function Cell({ cards, activeTag, onTag, onOpen, selectedId, showSpace }) {
+function Cell({ cards, activeTag, onTag, onOpen, selectedId, showSpace, dropCol, dropSpace, onMoveCard }) {
+  const [over, setOver] = useState(false);
+  const dropHandlers = {
+    onDragOver: (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!over) setOver(true); },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); },
+    onDrop: (e) => {
+      e.preventDefault();
+      setOver(false);
+      const id = e.dataTransfer.getData('text/plain');
+      if (id && onMoveCard) onMoveCard(id, { col: dropCol, space: dropSpace });
+    },
+  };
   if (cards.length === 0) {
     return (
-      <div className="font-mono text-11 text-fg-subtle px-2.5 py-3 rounded-sm border border-dashed border-subtle">
-        nothing on the bench.
+      <div
+        {...dropHandlers}
+        className={[
+          'font-mono text-11 px-2.5 py-3 rounded-sm border border-dashed transition-colors duration-fast',
+          over
+            ? 'border-[rgba(215,153,33,0.55)] bg-accent-primary-wash text-accent-primary-hi'
+            : 'border-subtle text-fg-subtle',
+        ].join(' ')}
+      >
+        {over ? 'drop here.' : 'nothing on the bench.'}
       </div>
     );
   }
-  return cards.map((c) => (
-    <Card
-      key={c.id}
-      card={c}
-      activeTag={activeTag}
-      onTag={onTag}
-      onOpen={onOpen}
-      selected={selectedId === c.id}
-      dim={activeTag && !(c.tags || []).includes(activeTag)}
-      showSpace={showSpace}
-    />
-  ));
+  return (
+    <div
+      {...dropHandlers}
+      className={[
+        'rounded-sm transition-colors duration-fast',
+        over ? 'bg-accent-primary-wash ring-1 ring-[rgba(215,153,33,0.45)]' : '',
+      ].join(' ')}
+    >
+      {cards.map((c) => (
+        <Card
+          key={c.id}
+          card={c}
+          activeTag={activeTag}
+          onTag={onTag}
+          onOpen={onOpen}
+          selected={selectedId === c.id}
+          dim={activeTag && !(c.tags || []).includes(activeTag)}
+          showSpace={showSpace}
+        />
+      ))}
+    </div>
+  );
 }
 
 function Detail({ card, onClose, onTag, activeTag }) {
@@ -405,6 +439,29 @@ export default function Module() {
   const [activeTag, setActiveTag] = useState(null);
   const [openCard, setOpenCard] = useState(null);
   const onTag = (t) => setActiveTag((cur) => (cur === t ? null : t));
+
+  // Drag a card to a new column (and, in rowed mode, possibly a new space).
+  // Optimistic local patch + POST through the same markdown route agents use.
+  // On failure we revert — fetch only rejects on network errors, so check
+  // r.ok too. SSE will reconcile any drift on the next mutation either way.
+  const moveCard = (id, { col, space }) => {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const targetSpace = space || card.space;
+    if (card.col === col && card.space === targetSpace) return;
+    const prev = { col: card.col, space: card.space };
+    setCards((curr) => curr.map((c) => (c.id === id ? { ...c, col, space: targetSpace } : c)));
+    fetch(`/api/kanban/spaces/${targetSpace}/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/markdown' },
+      body: `---\nid: ${id}\ncol: ${col}\n---\n`,
+    })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+      .catch((err) => {
+        console.error('[kanban] move failed, reverting:', err);
+        setCards((curr) => curr.map((c) => (c.id === id ? { ...c, ...prev } : c)));
+      });
+  };
 
   // Toggle animation: when the user flips the button, fade the whole body
   // out + slide up, swap the tree while invisible, then fade back in. Inside
@@ -562,6 +619,8 @@ export default function Module() {
                     onOpen={setOpenCard}
                     selectedId={openCard?.id}
                     showSpace
+                    dropCol={col.id}
+                    onMoveCard={moveCard}
                   />
                 </div>
               ))}
@@ -594,6 +653,9 @@ export default function Module() {
                           onOpen={setOpenCard}
                           selectedId={openCard?.id}
                           showSpace={false}
+                          dropCol={col.id}
+                          dropSpace={s.name}
+                          onMoveCard={moveCard}
                         />
                       </div>
                     ))}
